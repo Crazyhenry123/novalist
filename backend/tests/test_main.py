@@ -1,10 +1,11 @@
 """Tests for FastAPI endpoints in app.main."""
 
+import json
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock, call
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, _make_send_message, _run_pipeline_background
 
 
 @pytest.fixture()
@@ -40,13 +41,10 @@ class TestAgentInvokeUnknown:
 
 
 class TestAgentInvokeStartNovel:
-    def test_start_novel_calls_pipeline(self, client):
-        mock_result = {
-            "novel_id": "test-id",
-            "status": "COMPLETED",
-            "agents_completed": ["story_architect"],
-        }
-        with patch("app.main.run_novel_pipeline", new_callable=AsyncMock, return_value=mock_result):
+    def test_start_novel_returns_pipeline_started(self, client):
+        """After the async-to-sync refactor, agent_invoke returns immediately
+        with 'pipeline started' and runs the pipeline in BackgroundTasks."""
+        with patch("app.main._run_pipeline_background") as mock_bg:
             resp = client.post("/agent/invoke", json={
                 "action": "start_novel",
                 "payload": {"premise": "A wizard discovers time travel"},
@@ -55,7 +53,25 @@ class TestAgentInvokeStartNovel:
             assert resp.status_code == 200
             data = resp.json()
             assert data["status"] == "ok"
-            assert data["result"]["novel_id"] == "test-id"
+            assert data["message"] == "pipeline started"
+            # BackgroundTasks runs the function; TestClient waits for it
+            mock_bg.assert_called_once()
+            call_args = mock_bg.call_args
+            # First arg is the NovelRequest
+            assert call_args.args[0].premise == "A wizard discovers time travel"
+            # Fourth arg is user_id
+            assert call_args.args[3] == "user123"
+
+    def test_start_novel_uses_background_tasks(self, client):
+        """Verify the endpoint adds _run_pipeline_background to BackgroundTasks."""
+        with patch("app.main._run_pipeline_background"):
+            resp = client.post("/agent/invoke", json={
+                "action": "start_novel",
+                "payload": {"premise": "Test premise"},
+                "user_id": "u1",
+            })
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "ok"
 
     def test_start_novel_invalid_payload(self, client):
         resp = client.post("/agent/invoke", json={
@@ -66,6 +82,21 @@ class TestAgentInvokeStartNovel:
         data = resp.json()
         assert data["status"] == "error"
 
+    def test_start_novel_with_chinese_genre(self, client):
+        """Chinese enum values work in the payload."""
+        with patch("app.main._run_pipeline_background"):
+            resp = client.post("/agent/invoke", json={
+                "action": "start_novel",
+                "payload": {
+                    "premise": "穿越到古代",
+                    "genre": "chuanyue",
+                    "structure": "shuangwen",
+                    "style": "shuangkuai",
+                },
+            })
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "ok"
+
 
 class TestAgentInvokeGenerateChapter:
     def test_generate_chapter_returns_ok(self, client):
@@ -75,6 +106,64 @@ class TestAgentInvokeGenerateChapter:
         })
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+
+class TestMakeSendMessage:
+    def test_send_message_calls_post_to_connection(self):
+        """send_message is now sync and calls boto3 post_to_connection."""
+        mock_client = MagicMock()
+        with patch("app.main.boto3") as mock_boto3:
+            mock_boto3.client.return_value = mock_client
+            send = _make_send_message("https://example.com", "conn-123")
+            send({"type": "test", "content": "hello"})
+            mock_client.post_to_connection.assert_called_once()
+            call_kwargs = mock_client.post_to_connection.call_args.kwargs
+            assert call_kwargs["ConnectionId"] == "conn-123"
+            payload = json.loads(call_kwargs["Data"].decode("utf-8"))
+            assert payload["type"] == "test"
+
+    def test_send_message_no_callback_url(self):
+        """When callback_url is None, send_message is a no-op."""
+        send = _make_send_message(None, "conn-123")
+        # Should not raise
+        send({"type": "test"})
+
+    def test_send_message_handles_exception(self):
+        """send_message catches exceptions and logs a warning."""
+        mock_client = MagicMock()
+        mock_client.post_to_connection.side_effect = Exception("network error")
+        with patch("app.main.boto3") as mock_boto3:
+            mock_boto3.client.return_value = mock_client
+            send = _make_send_message("https://example.com", "conn-123")
+            # Should not raise
+            send({"type": "test"})
+
+
+class TestRunPipelineBackground:
+    def test_calls_run_novel_pipeline(self):
+        """_run_pipeline_background creates send_message and calls run_novel_pipeline."""
+        from app.models.schemas import NovelRequest
+        req = NovelRequest(premise="Test")
+        with patch("app.main.run_novel_pipeline") as mock_pipeline, \
+             patch("app.main._make_send_message") as mock_make_send:
+            mock_send = MagicMock()
+            mock_make_send.return_value = mock_send
+            _run_pipeline_background(req, "https://cb.url", "conn1", "user1")
+            mock_pipeline.assert_called_once_with(req, mock_send, "user1")
+
+    def test_sends_error_on_exception(self):
+        """If run_novel_pipeline raises, an error message is sent."""
+        from app.models.schemas import NovelRequest
+        req = NovelRequest(premise="Test")
+        with patch("app.main.run_novel_pipeline", side_effect=RuntimeError("boom")), \
+             patch("app.main._make_send_message") as mock_make_send:
+            mock_send = MagicMock()
+            mock_make_send.return_value = mock_send
+            _run_pipeline_background(req, "https://cb.url", "conn1", "user1")
+            mock_send.assert_called()
+            error_msg = mock_send.call_args.args[0]
+            assert error_msg["type"] == "error"
+            assert "生成失败" in error_msg["content"]
 
 
 class TestListNovels:

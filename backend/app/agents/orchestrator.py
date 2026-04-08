@@ -69,6 +69,10 @@ def build_novel_graph() -> tuple:
     builder.set_entry_point("character_developer")
     builder.set_entry_point("world_builder")
 
+    # Set execution limits to prevent indefinite hangs
+    builder.set_execution_timeout(1800)  # 30 min max for entire pipeline
+    builder.set_node_timeout(600)        # 10 min max per agent
+
     graph = builder.build()
 
     agents = {
@@ -116,16 +120,20 @@ def build_prompt(req: NovelRequest) -> str:
 """
 
 
-async def run_novel_pipeline(
+def run_novel_pipeline(
     req: NovelRequest,
     send_message: Callable,
     user_id: str = "system",
 ) -> dict:
     """Run the full novel generation pipeline with streaming updates.
 
+    This is a synchronous, long-running function. It is designed to be called
+    from FastAPI's BackgroundTasks (which runs sync functions in a threadpool).
+    The send_message callback posts directly to API Gateway WebSocket.
+
     Args:
         req: The novel creation request.
-        send_message: Async callback to stream messages to the client.
+        send_message: Sync callback to stream messages to the client.
         user_id: The authenticated user ID.
 
     Returns:
@@ -134,7 +142,7 @@ async def run_novel_pipeline(
     novel_id = str(uuid.uuid4())
     prompt = build_prompt(req)
 
-    await send_message({
+    send_message({
         "type": "pipeline_start",
         "novel_id": novel_id,
         "content": "正在启动小说生成流水线...",
@@ -149,7 +157,7 @@ async def run_novel_pipeline(
     }
 
     # Run the graph
-    await send_message({
+    send_message({
         "type": "agent_start",
         "agent": "story_architect,character_developer,world_builder",
         "content": "第一阶段：正在同步设计故事结构、开发角色和构建世界观...",
@@ -165,14 +173,14 @@ async def run_novel_pipeline(
             node_result = result.results.get(node_id)
             if node_result:
                 node_results[node_id] = str(node_result.result)
-                await send_message({
+                send_message({
                     "type": "agent_result",
                     "agent": node_id,
                     "content": f"{AGENT_NAMES_CN.get(node_id, node_id)} 已完成。",
                     "data": {"preview": str(node_result.result)[:500]},
                 })
 
-        await send_message({
+        send_message({
             "type": "novel_complete",
             "novel_id": novel_id,
             "content": "小说生成完成！",
@@ -191,7 +199,7 @@ async def run_novel_pipeline(
 
     except Exception as e:
         logger.exception("Pipeline failed")
-        await send_message({
+        send_message({
             "type": "error",
             "content": f"流水线错误：{str(e)}",
         })

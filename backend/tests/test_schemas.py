@@ -28,6 +28,9 @@ class TestGenreEnum:
         expected = {
             "fantasy", "science_fiction", "mystery", "thriller",
             "romance", "horror", "literary", "historical", "young_adult",
+            # Chinese web novel genres
+            "xuanhuan", "xianxia", "chuanyue", "chongsheng", "dushi",
+            "xitong", "gongdou", "moshi", "wuxia", "yanqing", "danmei", "junshi",
         }
         assert {g.value for g in Genre} == expected
 
@@ -35,14 +38,64 @@ class TestGenreEnum:
         assert Genre("fantasy") is Genre.FANTASY
         assert Genre("science_fiction") is Genre.SCIENCE_FICTION
 
+    def test_chinese_genre_xuanhuan(self):
+        assert Genre("xuanhuan") is Genre.XUANHUAN
+
+    def test_chinese_genre_xianxia(self):
+        assert Genre("xianxia") is Genre.XIANXIA
+
+    def test_chinese_genre_chuanyue(self):
+        assert Genre("chuanyue") is Genre.CHUANYUE
+
+    def test_chinese_genre_chongsheng(self):
+        assert Genre("chongsheng") is Genre.CHONGSHENG
+
+    def test_chinese_genre_dushi(self):
+        assert Genre("dushi") is Genre.DUSHI
+
+    def test_chinese_genre_xitong(self):
+        assert Genre("xitong") is Genre.XITONG
+
+    def test_chinese_genre_gongdou(self):
+        assert Genre("gongdou") is Genre.GONGDOU
+
+    def test_chinese_genre_moshi(self):
+        assert Genre("moshi") is Genre.MOSHI
+
+    def test_chinese_genre_wuxia(self):
+        assert Genre("wuxia") is Genre.WUXIA
+
+    def test_chinese_genre_yanqing(self):
+        assert Genre("yanqing") is Genre.YANQING
+
+    def test_chinese_genre_danmei(self):
+        assert Genre("danmei") is Genre.DANMEI
+
+    def test_chinese_genre_junshi(self):
+        assert Genre("junshi") is Genre.JUNSHI
+
 
 class TestNarrativeStructureEnum:
     def test_all_values(self):
         expected = {
             "three_act", "heros_journey", "save_the_cat",
             "kishotenketsu", "freytags_pyramid",
+            # Chinese web novel structures
+            "shengji", "fucho", "shuangwen", "qifu",
         }
         assert {n.value for n in NarrativeStructure} == expected
+
+    def test_chinese_structure_shengji(self):
+        assert NarrativeStructure("shengji") is NarrativeStructure.SHENGJI
+
+    def test_chinese_structure_fucho(self):
+        assert NarrativeStructure("fucho") is NarrativeStructure.FUCHO
+
+    def test_chinese_structure_shuangwen(self):
+        assert NarrativeStructure("shuangwen") is NarrativeStructure.SHUANGWEN
+
+    def test_chinese_structure_qifu(self):
+        assert NarrativeStructure("qifu") is NarrativeStructure.QIFU
 
 
 class TestWritingStyleEnum:
@@ -50,8 +103,32 @@ class TestWritingStyleEnum:
         expected = {
             "literary", "commercial", "minimalist", "ornate",
             "dialogue_heavy", "action_paced", "introspective",
+            # Chinese web novel styles
+            "shuangkuai", "xijie", "qingsong", "rexue",
+            "nuexin", "guyan", "zhichang",
         }
         assert {w.value for w in WritingStyle} == expected
+
+    def test_chinese_style_shuangkuai(self):
+        assert WritingStyle("shuangkuai") is WritingStyle.SHUANGKUAI
+
+    def test_chinese_style_xijie(self):
+        assert WritingStyle("xijie") is WritingStyle.XIJIE
+
+    def test_chinese_style_qingsong(self):
+        assert WritingStyle("qingsong") is WritingStyle.QINGSONG
+
+    def test_chinese_style_rexue(self):
+        assert WritingStyle("rexue") is WritingStyle.REXUE
+
+    def test_chinese_style_nuexin(self):
+        assert WritingStyle("nuexin") is WritingStyle.NUEXIN
+
+    def test_chinese_style_guyan(self):
+        assert WritingStyle("guyan") is WritingStyle.GUYAN
+
+    def test_chinese_style_zhichang(self):
+        assert WritingStyle("zhichang") is WritingStyle.ZHICHANG
 
 
 class TestPOVEnum:
@@ -88,7 +165,8 @@ class TestCharacterBrief:
 class TestNovelRequest:
     def test_defaults(self):
         nr = NovelRequest(premise="A wizard finds a cat")
-        assert nr.genre is Genre.FANTASY
+        # Default genre changed to XUANHUAN
+        assert nr.genre is Genre.XUANHUAN
         assert nr.structure is NarrativeStructure.THREE_ACT
         assert nr.style is WritingStyle.COMMERCIAL
         assert nr.pov is POV.THIRD_LIMITED
@@ -96,7 +174,8 @@ class TestNovelRequest:
         assert nr.characters == []
         assert nr.setting_notes == ""
         assert nr.theme_notes == ""
-        assert nr.tone == "engaging and immersive"
+        # Default tone is now Chinese
+        assert nr.tone == "引人入胜、沉浸感强"
 
     def test_custom_values(self):
         nr = NovelRequest(
@@ -112,6 +191,17 @@ class TestNovelRequest:
         )
         assert nr.genre is Genre.SCIENCE_FICTION
         assert nr.target_chapters == 20
+
+    def test_chinese_params(self):
+        nr = NovelRequest(
+            premise="穿越到古代",
+            genre=Genre.CHUANYUE,
+            structure=NarrativeStructure.SHUANGWEN,
+            style=WritingStyle.SHUANGKUAI,
+        )
+        assert nr.genre is Genre.CHUANYUE
+        assert nr.structure is NarrativeStructure.SHUANGWEN
+        assert nr.style is WritingStyle.SHUANGKUAI
 
     def test_target_chapters_min(self):
         nr = NovelRequest(premise="x", target_chapters=3)
@@ -141,7 +231,7 @@ class TestNovelRequest:
 
 
 # ---------------------------------------------------------------------------
-# Other models — basic construction
+# Other models -- basic construction
 # ---------------------------------------------------------------------------
 
 class TestStoryStructure:

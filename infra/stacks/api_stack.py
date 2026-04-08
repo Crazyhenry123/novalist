@@ -55,7 +55,7 @@ class ApiStack(cdk.Stack):
             handler="index.handler",
             code=lambda_.Code.from_inline(MESSAGE_CODE),
             environment=common_env,
-            timeout=cdk.Duration.seconds(300),
+            timeout=cdk.Duration.seconds(15),
             memory_size=512,
         )
 
@@ -187,7 +187,7 @@ def handler(event, context):
 '''
 
 MESSAGE_CODE = '''
-import os, json, boto3, urllib.request
+import os, json, boto3, urllib.request, urllib.error, socket
 
 BACKEND_URL = os.environ["BACKEND_URL"]
 
@@ -195,16 +195,15 @@ def handler(event, context):
     connection_id = event["requestContext"]["connectionId"]
     domain = event["requestContext"]["domainName"]
     stage = event["requestContext"]["stage"]
+    callback_url = f"https://{domain}/{stage}"
 
-    apigw = boto3.client(
-        "apigatewaymanagementapi",
-        endpoint_url=f"https://{domain}/{stage}",
-    )
     body = json.loads(event.get("body", "{}"))
     body["connection_id"] = connection_id
-    body["callback_url"] = f"https://{domain}/{stage}"
+    body["callback_url"] = callback_url
 
-    # Forward to Fargate backend
+    # Fire-and-forget: dispatch to Fargate backend with a very short timeout.
+    # The backend handles all client communication via post_to_connection
+    # directly, so we do NOT need to wait for the full response.
     req = urllib.request.Request(
         f"{BACKEND_URL}/agent/invoke",
         data=json.dumps(body).encode(),
@@ -212,17 +211,29 @@ def handler(event, context):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=290) as resp:
-            result = json.loads(resp.read())
+        # 2s timeout — just enough to confirm Fargate received the request.
+        # The backend runs the pipeline asynchronously and streams results
+        # back to the client via API Gateway Management API.
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            resp.read()
+    except socket.timeout:
+        # Timeout is expected — the pipeline takes minutes. This is normal
+        # fire-and-forget behavior; the backend continues processing.
+        pass
+    except (urllib.error.URLError, ConnectionRefusedError, OSError) as e:
+        # Connection errors mean the backend is unreachable — notify the client.
+        print(f"Backend connection error: {e}")
+        apigw = boto3.client(
+            "apigatewaymanagementapi", endpoint_url=callback_url
+        )
+        try:
             apigw.post_to_connection(
                 ConnectionId=connection_id,
-                Data=json.dumps(result).encode(),
+                Data=json.dumps({"error": "Backend is temporarily unavailable. Please try again shortly."}).encode(),
             )
-    except Exception as e:
-        apigw.post_to_connection(
-            ConnectionId=connection_id,
-            Data=json.dumps({"type": "error", "message": str(e)}).encode(),
-        )
+        except Exception:
+            pass  # Client may have already disconnected
+        return {"statusCode": 502}
 
     return {"statusCode": 200}
 '''

@@ -168,6 +168,39 @@ class BackendStack(cdk.Stack):
             self.node.find_child("TriggerBuild")
         )
 
+        # Force ECS to pull the new image after every CodeBuild
+        force_deploy_fn = lambda_.Function(
+            self, "ForceDeployFn",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="index.handler",
+            code=lambda_.Code.from_inline(FORCE_DEPLOY_CODE),
+            timeout=cdk.Duration.minutes(5),
+            environment={
+                "CLUSTER_ARN": cluster.cluster_arn,
+                "SERVICE_NAME": self.fargate_service.service.service_name,
+            },
+        )
+        force_deploy_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["ecs:UpdateService"],
+                resources=[self.fargate_service.service.service_arn],
+            )
+        )
+        force_deploy_provider = cr.Provider(
+            self, "ForceDeployProvider",
+            on_event_handler=force_deploy_fn,
+        )
+        force_deploy_cr = CustomResource(
+            self, "ForceDeploy",
+            service_token=force_deploy_provider.service_token,
+            properties={
+                "SourceHash": source_asset.asset_hash,
+            },
+        )
+        force_deploy_cr.node.add_dependency(
+            self.node.find_child("TriggerBuild")
+        )
+
         # Health check
         self.fargate_service.target_group.configure_health_check(
             path="/health",
@@ -187,6 +220,16 @@ class BackendStack(cdk.Stack):
             iam.PolicyStatement(
                 actions=["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
                 resources=["*"],
+            )
+        )
+
+        # Grant permission to post messages back to WebSocket clients
+        self.fargate_service.task_definition.task_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["execute-api:ManageConnections"],
+                resources=[
+                    f"arn:aws:execute-api:{cdk.Stack.of(self).region}:{cdk.Stack.of(self).account}:*/prod/*"
+                ],
             )
         )
 
@@ -242,6 +285,33 @@ def handler(event, context):
                 return
             # IN_PROGRESS — keep polling
 
+    except Exception as e:
+        print(f"Error: {e}")
+        cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason=str(e))
+'''
+
+
+FORCE_DEPLOY_CODE = '''
+import os
+import boto3
+import cfnresponse
+
+ecs = boto3.client("ecs")
+
+def handler(event, context):
+    if event["RequestType"] == "Delete":
+        cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+        return
+    try:
+        cluster = os.environ["CLUSTER_ARN"]
+        service = os.environ["SERVICE_NAME"]
+        ecs.update_service(
+            cluster=cluster,
+            service=service,
+            forceNewDeployment=True,
+        )
+        print(f"Forced new deployment for {service}")
+        cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
     except Exception as e:
         print(f"Error: {e}")
         cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason=str(e))
