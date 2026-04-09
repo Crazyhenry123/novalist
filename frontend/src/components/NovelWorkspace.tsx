@@ -1,53 +1,38 @@
-import { useState, useEffect } from "react";
 import type { NovelRequest } from "../types";
 import { useAuth } from "../auth/CognitoProvider";
-import { useWebSocket } from "../hooks/useWebSocket";
+import { useSSE } from "../hooks/useSSE";
 import StorySetup from "./StorySetup";
 import AgentThoughts from "./AgentThoughts";
 import ChapterView from "./ChapterView";
 
 export default function NovelWorkspace() {
   const { idToken } = useAuth();
-  const { connected, messages, sendMessage, clearMessages } = useWebSocket(idToken);
-  const [generating, setGenerating] = useState(false);
+  const { messages, generating, generate, cancel, clearMessages } = useSSE();
 
   function handleSubmit(req: NovelRequest) {
     clearMessages();
-    setGenerating(true);
-    sendMessage("start_novel", req as unknown as Record<string, unknown>);
+    generate("/api/generate", req as unknown as Record<string, unknown>, idToken);
   }
-
-  const isComplete = messages.some(
-    (m) => m.type === "novel_complete" || m.type === "error"
-  );
-
-  useEffect(() => {
-    if (isComplete && generating) {
-      setGenerating(false);
-    }
-  }, [isComplete, generating]);
 
   return (
     <div>
-      <div style={styles.status}>
-        <span
-          style={{
-            ...styles.dot,
-            background: connected ? "#10b981" : "#ef4444",
-          }}
-        />
-        {connected ? "已连接" : "未连接"}
-      </div>
-
       <StorySetup onSubmit={handleSubmit} disabled={generating} />
 
       {generating && (
         <div style={styles.progress}>
           <div style={styles.spinner} />
           <span>AI 智能体正在协作创作您的小说...</span>
+          <button onClick={cancel} style={styles.cancelBtn}>
+            取消
+          </button>
         </div>
       )}
 
+      {messages.length > 0 && (
+        <div style={{ color: "#888", fontSize: 12, marginTop: 8 }}>
+          已接收 {messages.length} 条消息
+        </div>
+      )}
       <AgentThoughts messages={messages} />
       <ChapterView messages={messages} />
     </div>
@@ -55,19 +40,6 @@ export default function NovelWorkspace() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  status: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    color: "#888",
-    fontSize: 12,
-    marginBottom: 24,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-  },
   progress: {
     display: "flex",
     alignItems: "center",
@@ -86,5 +58,15 @@ const styles: Record<string, React.CSSProperties> = {
     borderTopColor: "#7c3aed",
     borderRadius: "50%",
     animation: "spin 0.8s linear infinite",
+  },
+  cancelBtn: {
+    marginLeft: "auto",
+    padding: "6px 16px",
+    borderRadius: 6,
+    border: "1px solid #555",
+    background: "transparent",
+    color: "#ef4444",
+    cursor: "pointer",
+    fontSize: 13,
   },
 };

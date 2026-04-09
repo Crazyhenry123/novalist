@@ -9,6 +9,7 @@ class Settings(BaseModel):
     )
     novels_table: str = os.getenv("NOVELS_TABLE", "novalist-novels")
     chapters_table: str = os.getenv("CHAPTERS_TABLE", "novalist-chapters")
+    s3_bucket: str = os.getenv("S3_BUCKET", "novalist-data")
     cognito_user_pool_id: str = os.getenv("COGNITO_USER_POOL_ID", "")
     cognito_region: str = os.getenv("COGNITO_REGION", "us-east-1")
     websocket_api_endpoint: str = os.getenv("WEBSOCKET_API_ENDPOINT", "")

@@ -137,3 +137,62 @@ class StreamMessage(BaseModel):
     data: Optional[dict] = None
     chapter: Optional[int] = None
     word_count: Optional[int] = None
+
+
+# ── Novalist v2 models ──────────────────────────────────────────────
+
+
+class NovelStatus(str, Enum):
+    CHAT = "chat"
+    STEP1_DRAFT = "step1_draft"
+    STEP1_DONE = "step1_done"
+    STEP2_DRAFT = "step2_draft"
+    STEP2_DONE = "step2_done"
+    WRITING = "writing"
+    COMPLETED = "completed"
+
+
+class Step1Request(BaseModel):
+    novel_id: str = ""  # empty = create new
+    premise: str
+    genre: Genre = Genre.XUANHUAN
+    structure: NarrativeStructure = NarrativeStructure.THREE_ACT
+    style: WritingStyle = WritingStyle.COMMERCIAL
+    pov: POV = POV.THIRD_LIMITED
+    target_chapters: int = Field(default=12, ge=3, le=50)
+    characters: list[CharacterBrief] = Field(default_factory=list)
+    setting_notes: str = ""
+    theme_notes: str = ""
+    tone: str = "引人入胜、沉浸感强"
+
+
+class Step2Request(BaseModel):
+    novel_id: str
+    # step1 results (may be user-edited)
+    structure: str = ""
+    characters: str = ""
+    world: str = ""
+
+
+class Step3ChapterRequest(BaseModel):
+    novel_id: str
+    chapter_num: int
+    chapter_outline: str  # the outline for this specific chapter
+    style: WritingStyle = WritingStyle.COMMERCIAL
+    pov: POV = POV.THIRD_LIMITED
+
+
+class ChatRequest(BaseModel):
+    novel_id: str = ""  # empty = new conversation
+    message: str
+    history: list[dict] = Field(default_factory=list)  # [{role, content}]
+
+
+class SaveStep1Request(BaseModel):
+    structure: str = ""
+    characters: str = ""
+    world: str = ""
+
+
+class SaveStep2Request(BaseModel):
+    plot: str = ""

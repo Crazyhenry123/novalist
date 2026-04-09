@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import aws_cdk as cdk
 from stacks.storage_stack import StorageStack
 from stacks.auth_stack import AuthStack
@@ -7,8 +8,6 @@ from stacks.api_stack import ApiStack
 from stacks.frontend_stack import FrontendStack
 
 app = cdk.App()
-
-import os
 
 env = cdk.Environment(
     account=os.environ.get("CDK_DEFAULT_ACCOUNT", app.node.try_get_context("account")),
@@ -22,6 +21,7 @@ backend = BackendStack(
     env=env,
     novels_table=storage.novels_table,
     chapters_table=storage.chapters_table,
+    data_bucket=storage.data_bucket,
 )
 api = ApiStack(
     app, "NovalistApi",
@@ -35,7 +35,7 @@ frontend = FrontendStack(
     env=env,
     user_pool=auth.user_pool,
     user_pool_client=auth.user_pool_client,
-    websocket_url=api.websocket_url,
+    backend_alb=backend.fargate_service.load_balancer,
 )
 
 app.synth()

@@ -1,20 +1,26 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useAuth } from "../auth/CognitoProvider";
+import MemoryPanel from "./MemoryPanel";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { email, logout } = useAuth();
+  const [memoryOpen, setMemoryOpen] = useState(false);
 
   return (
     <div style={styles.wrapper}>
       <header style={styles.header}>
         <h1 style={styles.logo}>Novalist</h1>
         <div style={styles.headerRight}>
+          <button onClick={() => setMemoryOpen(!memoryOpen)} style={styles.memoryBtn}>
+            记忆
+          </button>
           <span style={styles.email}>{email}</span>
           <button onClick={logout} style={styles.logoutBtn}>
             退出登录
           </button>
         </div>
       </header>
+      <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />
       <main style={styles.main}>{children}</main>
     </div>
   );
@@ -38,6 +44,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   headerRight: { display: "flex", alignItems: "center", gap: 16 },
   email: { color: "#888", fontSize: 13 },
+  memoryBtn: {
+    padding: "6px 16px",
+    borderRadius: 6,
+    border: "1px solid #7c3aed",
+    background: "transparent",
+    color: "#c9a0dc",
+    cursor: "pointer",
+    fontSize: 13,
+    fontWeight: 600,
+  },
   logoutBtn: {
     padding: "6px 16px",
     borderRadius: 6,

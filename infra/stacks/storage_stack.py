@@ -1,6 +1,7 @@
 import aws_cdk as cdk
 from aws_cdk import (
     aws_dynamodb as dynamodb,
+    aws_s3 as s3,
     RemovalPolicy,
 )
 from constructs import Construct
@@ -34,6 +35,18 @@ class StorageStack(cdk.Stack):
             ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        self.data_bucket = s3.Bucket(
+            self, "DataBucket",
+            bucket_name=f"novalist-data-{cdk.Stack.of(self).account}",
+            removal_policy=cdk.RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+            cors=[s3.CorsRule(
+                allowed_methods=[s3.HttpMethods.GET, s3.HttpMethods.PUT],
+                allowed_origins=["*"],
+                allowed_headers=["*"],
+            )],
         )
 
         self.connections_table = dynamodb.Table(

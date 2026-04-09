@@ -85,3 +85,49 @@ export interface AuthState {
   idToken: string | null;
   email: string | null;
 }
+
+export type NovelStatus = "chat" | "step1_draft" | "step1_done" | "step2_draft" | "step2_done" | "writing" | "completed";
+
+export type PageView = "home" | "composer" | "chat";
+
+export interface NovelSummary {
+  novel_id: string;
+  user_id: string;
+  status: NovelStatus;
+  premise?: string;
+  created_at?: number;
+  title?: string;
+}
+
+export interface NovelState {
+  novel_id: string;
+  user_id?: string;
+  status: NovelStatus;
+  premise?: string;
+  created_at?: number;
+  title?: string;
+  structure?: string;
+  characters?: string;
+  world?: string;
+  plot?: string;
+  chat_history?: Array<{ role: string; content: string }>;
+  chapters?: Record<number, string>;  // {1: "content", 2: "content"}
+}
+
+export interface UserMemory {
+  user_preferences: {
+    preferred_style?: string;
+    preferred_genre?: string;
+    notes?: string;
+  };
+  current_novel: {
+    novel_id?: string;
+    title?: string;
+    key_characters?: string[];
+    plot_summary?: string;
+    world_summary?: string;
+    chapters_written?: number[];
+  };
+  chat_history_summary?: string;
+  updated_at?: number;
+}

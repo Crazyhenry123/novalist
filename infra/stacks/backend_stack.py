@@ -7,6 +7,7 @@ from aws_cdk import (
     aws_codebuild as codebuild,
     aws_iam as iam,
     aws_dynamodb as dynamodb,
+    aws_s3 as s3,
     aws_logs as logs,
     aws_s3_assets as s3_assets,
     aws_lambda as lambda_,
@@ -23,6 +24,7 @@ class BackendStack(cdk.Stack):
         id: str,
         novels_table: dynamodb.Table,
         chapters_table: dynamodb.Table,
+        data_bucket: s3.Bucket,
         **kwargs,
     ):
         super().__init__(scope, id, **kwargs)
@@ -150,6 +152,7 @@ class BackendStack(cdk.Stack):
                 environment={
                     "NOVELS_TABLE": novels_table.table_name,
                     "CHAPTERS_TABLE": chapters_table.table_name,
+                    "S3_BUCKET": data_bucket.bucket_name,
                     "AWS_REGION": cdk.Stack.of(self).region,
                     "LOG_LEVEL": "INFO",
                 },
@@ -161,6 +164,11 @@ class BackendStack(cdk.Stack):
             public_load_balancer=True,
             assign_public_ip=True,
             min_healthy_percent=100,
+        )
+
+        # Increase ALB idle timeout for long-running SSE streams
+        self.fargate_service.load_balancer.set_attribute(
+            "idle_timeout.timeout_seconds", "300"
         )
 
         # Ensure Fargate deploys AFTER the image is built
@@ -214,6 +222,9 @@ class BackendStack(cdk.Stack):
         chapters_table.grant_read_write_data(
             self.fargate_service.task_definition.task_role
         )
+
+        # Grant S3 access
+        data_bucket.grant_read_write(self.fargate_service.task_definition.task_role)
 
         # Grant Bedrock access
         self.fargate_service.task_definition.task_role.add_to_policy(
