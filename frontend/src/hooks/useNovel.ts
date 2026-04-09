@@ -20,7 +20,7 @@ export function useNovel() {
     async (novelId: string) => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/novel/${novelId}`, { headers: headers() });
+        const res = await fetch(`/api/novel/${novelId}?user_id=${encodeURIComponent(userId)}`, { headers: headers() });
         if (!res.ok) throw new Error("Failed to load novel");
         const data: NovelState = await res.json();
         setCurrentNovel(data);
@@ -32,7 +32,7 @@ export function useNovel() {
         setLoading(false);
       }
     },
-    [headers]
+    [headers, userId]
   );
 
   const listNovels = useCallback(async () => {
@@ -56,7 +56,7 @@ export function useNovel() {
 
   const saveStep1 = useCallback(
     async (novelId: string, data: { structure?: string; characters?: string; world?: string }) => {
-      const res = await fetch(`/api/novel/${novelId}/step1`, {
+      const res = await fetch(`/api/novel/${novelId}/step1?user_id=${encodeURIComponent(userId)}`, {
         method: "PUT",
         headers: headers(),
         body: JSON.stringify(data),
@@ -74,7 +74,7 @@ export function useNovel() {
 
   const saveStep2 = useCallback(
     async (novelId: string, data: { plot?: string }) => {
-      const res = await fetch(`/api/novel/${novelId}/step2`, {
+      const res = await fetch(`/api/novel/${novelId}/step2?user_id=${encodeURIComponent(userId)}`, {
         method: "PUT",
         headers: headers(),
         body: JSON.stringify(data),
@@ -93,7 +93,7 @@ export function useNovel() {
   const refreshNovel = useCallback(
     async (novelId: string) => {
       try {
-        const res = await fetch(`/api/novel/${novelId}`, { headers: headers() });
+        const res = await fetch(`/api/novel/${novelId}?user_id=${encodeURIComponent(userId)}`, { headers: headers() });
         if (!res.ok) throw new Error("Failed to refresh novel");
         const data: NovelState = await res.json();
         setCurrentNovel(data);

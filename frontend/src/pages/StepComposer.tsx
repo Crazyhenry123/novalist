@@ -81,21 +81,49 @@ export default function StepComposer({ novelId, onBack }: Props) {
     }
   }, [novelId, loadNovel]);
 
+  // Separate summary sections from chapter outlines
+  const [plotSummary, setPlotSummary] = useState("");
+
   function parsePlotToAbstracts(plot: string): Array<{ num: number; title: string; abstract: string }> {
     const items: Array<{ num: number; title: string; abstract: string }> = [];
-    // Split by chapter headings: 第X章：...
-    const parts = plot.split(/(?=第\s*\d+\s*章[：:：]?)/);
+    const seen = new Set<number>();
+
+    // Extract only the 【章节大纲】 section to avoid duplicates from 【节拍表】
+    let outlineSection = plot;
+    const outlineStart = plot.indexOf("【章节大纲】");
+    if (outlineStart >= 0) {
+      // Everything before 【章节大纲】 is summary (beat sheet, etc.)
+      const beforeOutline = plot.slice(0, outlineStart).trim();
+
+      // Find the end of the outline section (next 【 or end of text)
+      const afterOutlineStart = outlineStart + "【章节大纲】".length;
+      const nextSectionMatch = plot.slice(afterOutlineStart).search(/【[^】]+】/);
+      const outlineEnd = nextSectionMatch >= 0 ? afterOutlineStart + nextSectionMatch : plot.length;
+      outlineSection = plot.slice(afterOutlineStart, outlineEnd).trim();
+
+      // Everything after the outline section
+      const afterOutline = plot.slice(outlineEnd).trim();
+
+      // Combine non-outline sections as summary
+      setPlotSummary([beforeOutline, afterOutline].filter(Boolean).join("\n\n"));
+    } else {
+      setPlotSummary("");
+    }
+
+    // Parse chapters from the outline section only
+    const parts = outlineSection.split(/(?=第\s*\d+\s*章[：:：]?)/);
     for (const part of parts) {
       const trimmed = part.trim();
       if (!trimmed) continue;
       const headMatch = trimmed.match(/^第\s*(\d+)\s*章[：:：]?\s*(.*)/s);
       if (headMatch) {
         const num = parseInt(headMatch[1], 10);
+        if (seen.has(num)) continue; // Skip duplicates
+        seen.add(num);
         const rest = headMatch[2].trim();
-        // First line is the title, rest is the abstract
         const lines = rest.split("\n");
         const title = lines[0]?.trim() || `第${num}章`;
-        const abstract = lines.slice(1).join("\n").trim();
+        const abstract = lines.slice(1).join("\n").trim() || title;
         items.push({ num, title, abstract });
       }
     }
@@ -241,7 +269,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
       const body: Record<string, unknown> = { ...req, user_id: userId };
       if (currentNovelId) body.novel_id = currentNovelId;
 
-      generate("/api/step1", body, idToken);
+      generate(`/api/step1?user_id=${encodeURIComponent(userId)}`, body, idToken);
     },
     [userId, currentNovelId, idToken, generate, clearMessages]
   );
@@ -268,7 +296,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
     lastProcessedRef.current = 0;
     clearMessages();
 
-    generate("/api/step2", {
+    generate(`/api/step2?user_id=${encodeURIComponent(userId)}`, {
       novel_id: currentNovelId,
       structure: structureText,
       characters: charactersText,
@@ -311,7 +339,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
       lastProcessedRef.current = 0;
       clearMessages();
 
-      generate("/api/step3/chapter", {
+      generate(`/api/step3/chapter?user_id=${encodeURIComponent(userId)}`, {
         novel_id: currentNovelId,
         chapter_num: chapterNum,
         chapter_outline: chapterOutline,
@@ -423,50 +451,72 @@ export default function StepComposer({ novelId, onBack }: Props) {
                 />
               )}
 
-              {/* After generation, show chapter-by-chapter abstracts */}
+              {/* After generation, show consolidated view */}
               {!generating && parsedAbstracts.length > 0 && (
-                <div style={styles.abstractList}>
-                  {parsedAbstracts.map((item) => {
-                    const isOpen = expandedAbstract === item.num;
-                    return (
-                      <div key={item.num} style={styles.abstractCard}>
-                        <div
-                          style={styles.abstractHeader}
-                          onClick={() => setExpandedAbstract(isOpen ? null : item.num)}
-                        >
-                          <span style={styles.abstractTitle}>
-                            第{item.num}章：{item.title}
-                          </span>
-                          <span style={styles.abstractToggle}>{isOpen ? "▲" : "▼"}</span>
-                        </div>
-                        {isOpen && (
-                          <div style={styles.abstractBody}>
-                            <textarea
-                              value={item.abstract}
-                              onChange={(e) => {
-                                const newVal = e.target.value;
-                                setParsedAbstracts((prev) =>
-                                  prev.map((a) =>
-                                    a.num === item.num ? { ...a, abstract: newVal } : a
-                                  )
-                                );
-                                // Rebuild full plotText from abstracts
-                                const updated = parsedAbstracts.map((a) =>
-                                  a.num === item.num
-                                    ? `第${a.num}章：${a.title}\n${newVal}`
-                                    : `第${a.num}章：${a.title}\n${a.abstract}`
-                                );
-                                setPlotText(updated.join("\n\n"));
-                              }}
-                              style={styles.abstractTextarea}
-                              rows={4}
-                            />
+                <>
+                  {/* Summary sections (beat sheet, subplots, foreshadowing) */}
+                  {plotSummary && (
+                    <div style={styles.summaryBlock}>
+                      <h4 style={styles.summaryTitle}>📋 整体规划</h4>
+                      <pre style={styles.summaryText}>{plotSummary}</pre>
+                    </div>
+                  )}
+
+                  {/* Chapter-by-chapter abstracts */}
+                  <h4 style={{ color: "#c9a0dc", fontSize: 15, marginTop: 12 }}>
+                    📖 章节大纲（共 {parsedAbstracts.length} 章，点击展开编辑）
+                  </h4>
+                  <div style={styles.abstractList}>
+                    {parsedAbstracts.map((item) => {
+                      const isOpen = expandedAbstract === item.num;
+                      return (
+                        <div key={item.num} style={styles.abstractCard}>
+                          <div
+                            style={styles.abstractHeader}
+                            onClick={() => setExpandedAbstract(isOpen ? null : item.num)}
+                          >
+                            <span style={styles.abstractNum}>第{item.num}章</span>
+                            <span style={styles.abstractTitle}>{item.title}</span>
+                            <span style={styles.abstractToggle}>{isOpen ? "▲" : "▼"}</span>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                          {!isOpen && item.abstract && (
+                            <p style={styles.abstractPreview}>
+                              {item.abstract.length > 80 ? item.abstract.slice(0, 80) + "..." : item.abstract}
+                            </p>
+                          )}
+                          {isOpen && (
+                            <div style={styles.abstractBody}>
+                              <textarea
+                                value={item.abstract}
+                                onChange={(e) => {
+                                  const newVal = e.target.value;
+                                  setParsedAbstracts((prev) =>
+                                    prev.map((a) =>
+                                      a.num === item.num ? { ...a, abstract: newVal } : a
+                                    )
+                                  );
+                                  // Rebuild the chapter outline section
+                                  const chapterSection = parsedAbstracts.map((a) =>
+                                    a.num === item.num
+                                      ? `第${a.num}章：${a.title}\n${newVal}`
+                                      : `第${a.num}章：${a.title}\n${a.abstract}`
+                                  ).join("\n\n");
+                                  // Reconstruct full plot with summary + outline
+                                  const fullPlot = plotSummary
+                                    ? `${plotSummary}\n\n【章节大纲】\n${chapterSection}`
+                                    : chapterSection;
+                                  setPlotText(fullPlot);
+                                }}
+                                style={styles.abstractTextarea}
+                                rows={4}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
 
               {/* Fallback: if no parsed abstracts, show raw textarea */}
@@ -576,11 +626,16 @@ const styles: Record<string, React.CSSProperties> = {
   generateBtn: { padding: "12px 28px", borderRadius: 8, border: "none", background: "#7c3aed", color: "white", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" },
   confirmBtn: { padding: "12px 28px", borderRadius: 8, border: "none", background: "#10b981", color: "white", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", alignSelf: "flex-start" },
   plotTextarea: { width: "100%", minHeight: 300, maxHeight: 500, overflow: "auto", padding: 16, background: "#111", border: "1px solid #222", borderRadius: 10, color: "#e8e8e8", fontSize: 14, lineHeight: 1.8, fontFamily: "'Georgia', serif", resize: "vertical", outline: "none" },
+  summaryBlock: { background: "#0d0d0d", border: "1px solid #1a1a1a", borderRadius: 10, padding: 16, marginBottom: 8 },
+  summaryTitle: { color: "#888", fontSize: 13, fontWeight: 600, marginBottom: 8 },
+  summaryText: { color: "#aaa", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap", fontFamily: "inherit", margin: 0, maxHeight: 200, overflow: "auto" },
   abstractList: { display: "flex", flexDirection: "column", gap: 8 },
   abstractCard: { background: "#111", border: "1px solid #222", borderRadius: 10, overflow: "hidden" },
-  abstractHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", cursor: "pointer" },
-  abstractTitle: { color: "#c9a0dc", fontSize: 14, fontWeight: 600 },
-  abstractToggle: { color: "#555", fontSize: 11 },
+  abstractHeader: { display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", cursor: "pointer" },
+  abstractNum: { color: "#7c3aed", fontSize: 13, fontWeight: 700, flexShrink: 0, minWidth: 50 },
+  abstractTitle: { color: "#c9a0dc", fontSize: 14, fontWeight: 600, flex: 1 },
+  abstractToggle: { color: "#555", fontSize: 11, flexShrink: 0 },
+  abstractPreview: { color: "#666", fontSize: 12, lineHeight: 1.5, padding: "0 16px 10px", margin: 0 },
   abstractBody: { padding: "0 16px 16px", borderTop: "1px solid #1a1a1a", paddingTop: 12 },
   abstractTextarea: { width: "100%", minHeight: 60, maxHeight: 200, overflow: "auto", padding: 12, background: "#0d0d0d", border: "1px solid #1a1a1a", borderRadius: 8, color: "#bbb", fontSize: 13, lineHeight: 1.7, fontFamily: "'Georgia', 'Times New Roman', serif", resize: "vertical", outline: "none" },
 };

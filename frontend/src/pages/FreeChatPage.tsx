@@ -85,7 +85,7 @@ export default function FreeChatPage({ novelId, onBack, onStartComposition }: Pr
         body.novel_id = currentNovelId;
       }
 
-      generate("/api/chat", body, idToken);
+      generate(`/api/chat?user_id=${encodeURIComponent(userId)}`, body, idToken);
     },
     [chatHistory, currentNovelId, userId, idToken, generate, clearMessages]
   );
