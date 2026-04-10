@@ -14,13 +14,17 @@ interface Props {
   onGenerate: (chapterNum: number, outline: string) => void;
   onOutlineChange?: (chapterNum: number, outline: string) => void;
   generatingChapter: number | null;
+  generatingPhase?: "writing" | "editing";
 }
 
-export default function ChapterList({ chapters, onGenerate, onOutlineChange, generatingChapter }: Props) {
+export default function ChapterList({ chapters, onGenerate, onOutlineChange, generatingChapter, generatingPhase }: Props) {
   const [expandedChapter, setExpandedChapter] = useState<number | null>(null);
   const [confirmedOutlines, setConfirmedOutlines] = useState<Record<number, boolean>>({});
 
-  const statusLabel = (status: ChapterStatus): string => {
+  const statusLabel = (status: ChapterStatus, chapterNum: number): string => {
+    if (status === "generating" && chapterNum === generatingChapter) {
+      return generatingPhase === "editing" ? "润色中..." : "初稿撰写中...";
+    }
     switch (status) {
       case "pending": return "未生成";
       case "generating": return "生成中";
@@ -76,7 +80,7 @@ export default function ChapterList({ chapters, onGenerate, onOutlineChange, gen
                     borderColor: statusColor(ch.status),
                   }}
                 >
-                  {isGenerating ? "生成中..." : statusLabel(ch.status)}
+                  {isGenerating ? statusLabel("generating", ch.num) : statusLabel(ch.status, ch.num)}
                 </span>
                 <span style={styles.expandIcon}>{isExpanded ? "▲" : "▼"}</span>
               </div>

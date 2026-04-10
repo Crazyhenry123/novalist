@@ -48,6 +48,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
     Array<{ num: number; outline: string; status: "pending" | "generating" | "done"; content?: string }>
   >([]);
   const [generatingChapter, setGeneratingChapter] = useState<number | null>(null);
+  const [chapterPhase, setChapterPhase] = useState<"writing" | "editing">("writing");
 
   const lastProcessedRef = useRef(0);
 
@@ -62,19 +63,31 @@ export default function StepComposer({ novelId, onBack }: Props) {
           if (novel.world) setWorldText(novel.world);
           if (novel.plot) setPlotText(novel.plot);
 
-          // Load chapters from novel state if available
-          if (novel.chapters && typeof novel.chapters === "object") {
-            setChapters(prev => prev.map(ch => {
-              const loaded = novel.chapters?.[ch.num];
-              return loaded ? { ...ch, status: "done" as const, content: loaded } : ch;
-            }));
+          // Chapter keys from S3 may be strings ("1") — normalize to number keys
+          const rawChapters = (novel.chapters && typeof novel.chapters === "object") ? novel.chapters : {};
+          const existingChapters: Record<number, string> = {};
+          for (const [k, v] of Object.entries(rawChapters)) {
+            existingChapters[parseInt(k, 10)] = v as string;
           }
 
           if (novel.status === "step1_done" || novel.status === "step2_draft") {
             setStep(2);
           } else if (novel.status === "step2_done" || novel.status === "writing" || novel.status === "completed") {
             setStep(3);
-            if (novel.plot) parseChaptersFromPlot(novel.plot, novel.chapters);
+            if (novel.plot) {
+              const abstracts = parsePlotToAbstracts(novel.plot);
+              if (abstracts.length > 0) {
+                // Build chapter list with existing chapter content merged in
+                setChapters(abstracts.map((a) => ({
+                  num: a.num,
+                  outline: `${a.title}\n${a.abstract}`,
+                  status: (existingChapters[a.num] ? "done" : "pending") as "done" | "pending",
+                  content: existingChapters[a.num] || undefined,
+                })));
+              } else {
+                parseChaptersFromPlot(novel.plot, existingChapters);
+              }
+            }
           }
         }
       });
@@ -178,6 +191,12 @@ export default function StepComposer({ novelId, onBack }: Props) {
         setCurrentNovelId(msg.novel_id);
       }
 
+      // Track chapter generation phase
+      if (msg.type === "agent_start" && step === 3 && generatingChapter !== null) {
+        if (msg.agent === "prose_writer") setChapterPhase("writing");
+        else if (msg.agent === "editor") setChapterPhase("editing");
+      }
+
       // Text chunks — route to correct buffer by agent name
       if (msg.type === "text_chunk" && msg.agent && msg.content) {
         const agent = msg.agent;
@@ -190,10 +209,13 @@ export default function StepComposer({ novelId, onBack }: Props) {
         } else if (step === 2) {
           if (agent === "plot_weaver") setPlotText(streamBuf.current[agent]);
         } else if (step === 3 && generatingChapter !== null) {
-          const content = (streamBuf.current["prose_writer"] || "") + (streamBuf.current["editor"] || "");
-          setChapters((prev) =>
-            prev.map((ch) => ch.num === generatingChapter ? { ...ch, status: "generating", content } : ch)
-          );
+          // Only stream editor output to avoid showing draft then polished (looks like duplication)
+          // During prose_writer phase, show a status message instead
+          if (agent === "editor") {
+            setChapters((prev) =>
+              prev.map((ch) => ch.num === generatingChapter ? { ...ch, status: "generating", content: streamBuf.current["editor"] } : ch)
+            );
+          }
         }
       }
 
@@ -221,7 +243,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
 
       // Chapter done
       if (msg.type === "step_complete" && step === 3 && generatingChapter !== null) {
-        const content = (streamBuf.current["prose_writer"] || "") + (streamBuf.current["editor"] || "");
+        const content = streamBuf.current["editor"] || streamBuf.current["prose_writer"] || "";
         setChapters((prev) =>
           prev.map((ch) => ch.num === generatingChapter ? { ...ch, status: "done", content } : ch)
         );
@@ -309,28 +331,43 @@ export default function StepComposer({ novelId, onBack }: Props) {
     if (!currentNovelId) return;
     try {
       await saveStep2(currentNovelId, { plot: plotText });
-      parseChaptersFromPlot(plotText);
-      // Reload novel data to ensure chapters are populated correctly
+
+      // Build chapter list from the ALREADY PARSED abstracts (not re-parsing raw text)
+      // This ensures all chapters from Step 2 are carried into Step 3
       const refreshed = await refreshNovel(currentNovelId);
-      if (refreshed?.chapters && typeof refreshed.chapters === "object") {
-        setChapters(prev => prev.map(ch => {
-          const loaded = refreshed.chapters?.[ch.num];
-          return loaded ? { ...ch, status: "done" as const, content: loaded } : ch;
-        }));
+      const rawChapters = refreshed?.chapters || {};
+      const existingChapters: Record<number, string> = {};
+      for (const [k, v] of Object.entries(rawChapters)) {
+        existingChapters[parseInt(k, 10)] = v as string;
       }
+
+      if (parsedAbstracts.length > 0) {
+        // Use the same abstracts the author reviewed in Step 2
+        setChapters(parsedAbstracts.map((a) => ({
+          num: a.num,
+          outline: `${a.title}\n${a.abstract}`,
+          status: (existingChapters[a.num] ? "done" : "pending") as "done" | "pending",
+          content: existingChapters[a.num] || undefined,
+        })));
+      } else {
+        // Fallback: re-parse from plot text
+        parseChaptersFromPlot(plotText, existingChapters);
+      }
+
       setStep(3);
       clearMessages();
       lastProcessedRef.current = 0;
     } catch (err) {
       alert("保存失败，请重试");
     }
-  }, [currentNovelId, plotText, saveStep2, refreshNovel, clearMessages]);
+  }, [currentNovelId, plotText, parsedAbstracts, saveStep2, refreshNovel, clearMessages]);
 
   const handleChapterGenerate = useCallback(
     (chapterNum: number, outline?: string) => {
       const ch = chapters.find((c) => c.num === chapterNum);
       const chapterOutline = outline || ch?.outline || `第${chapterNum}章`;
       setGeneratingChapter(chapterNum);
+      setChapterPhase("writing");
       streamBuf.current.prose_writer = "";
       streamBuf.current.editor = "";
       setChapters((prev) =>
@@ -563,6 +600,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
             onGenerate={handleChapterGenerate}
             onOutlineChange={handleOutlineChange}
             generatingChapter={generatingChapter}
+            generatingPhase={chapterPhase}
           />
         </div>
       )}
