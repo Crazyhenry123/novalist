@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import type { PageView } from "../types";
 import NovelList from "../components/NovelList";
 import { useNovel } from "../hooks/useNovel";
+import { useAuth } from "../auth/CognitoProvider";
+import { useToast } from "../components/Toast";
 
 interface Props {
   onNavigate: (page: PageView) => void;
@@ -9,11 +11,31 @@ interface Props {
 }
 
 export default function HomePage({ onNavigate, onSelectNovel }: Props) {
-  const { novels, loading, listNovels } = useNovel();
+  const { novels, loading, listNovels, userId } = useNovel();
+  const { idToken } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
     listNovels();
   }, [listNovels]);
+
+  const handleDelete = useCallback(async (novelId: string) => {
+    try {
+      const h: Record<string, string> = {};
+      if (idToken) h["Authorization"] = `Bearer ${idToken}`;
+      const res = await fetch(`/api/novel/${novelId}?user_id=${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+        headers: h,
+      });
+      if (res.ok) {
+        listNovels(); // Refresh list
+      } else {
+        toast("删除失败", "error");
+      }
+    } catch {
+      alert("删除失败");
+    }
+  }, [userId, idToken, listNovels]);
 
   return (
     <div style={styles.page}>
@@ -81,6 +103,7 @@ export default function HomePage({ onNavigate, onSelectNovel }: Props) {
             onSelectNovel(novelId);
             onNavigate(page);
           }}
+          onDelete={handleDelete}
         />
       </div>
     </div>

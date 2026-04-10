@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useAuth } from "../auth/CognitoProvider";
 import MemoryPanel from "./MemoryPanel";
 
-export default function Layout({ children }: { children: ReactNode }) {
+export default function Layout({ children, novelId }: { children: ReactNode; novelId?: string }) {
   const { email, logout } = useAuth();
   const [memoryOpen, setMemoryOpen] = useState(false);
 
@@ -20,7 +20,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </button>
         </div>
       </header>
-      <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} />
+      <MemoryPanel open={memoryOpen} onClose={() => setMemoryOpen(false)} novelId={novelId} />
       <main style={styles.main}>{children}</main>
     </div>
   );

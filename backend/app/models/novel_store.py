@@ -97,6 +97,16 @@ class NovelStore:
                 chapters[num] = self.s3.load_text(key)
         return chapters
 
+    def delete_novel(self, user_id: str, novel_id: str):
+        """Delete novel from DynamoDB and all S3 content."""
+        # Delete DynamoDB record
+        self.novels.delete_item(Key={"user_id": user_id, "novel_id": novel_id})
+        # Delete all S3 objects under this novel
+        prefix = self._s3_prefix(user_id, novel_id)
+        keys = self.s3.list_keys(f"{prefix}/")
+        for key in keys:
+            self.s3.delete(key)
+
     def get_novel_full(self, user_id: str, novel_id: str) -> dict:
         """Load complete novel: meta + all S3 content."""
         meta = self.get_novel_meta(user_id, novel_id)

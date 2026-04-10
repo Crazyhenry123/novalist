@@ -190,7 +190,7 @@ def _run_step1_in_thread(
     """Run story_architect + character_developer + world_builder in parallel via Graph."""
     try:
         # Load memory context and prepend to prompt
-        memory_mgr = MemoryManager(user_id)
+        memory_mgr = MemoryManager(user_id, novel_id)
         memory_context = memory_mgr.format_context()
         if memory_context:
             prompt = memory_context + prompt
@@ -405,7 +405,7 @@ async def stream_step2(
     store.update_status(user_id, novel_id, "step2_draft")
 
     # Load memory context and prepend to prompt
-    memory_mgr = MemoryManager(user_id)
+    memory_mgr = MemoryManager(user_id, novel_id)
     memory_context = memory_mgr.format_context()
     prompt = _build_step2_prompt(req)
     if memory_context:
@@ -470,7 +470,7 @@ def _run_step3_in_thread(
     """Run prose_writer then editor sequentially for one chapter."""
     try:
         store = NovelStore()
-        memory_mgr = MemoryManager(user_id)
+        memory_mgr = MemoryManager(user_id, novel_id)
 
         # ── Prose writer ─────────────────────────────
         cn_pw = AGENT_NAMES_CN["prose_writer"]
@@ -532,7 +532,7 @@ def _run_step3_in_thread(
 
         # Save chapter to S3 and update memory
         store.save_chapter(user_id, novel_id, chapter_num, final_text)
-        memory_mgr.update_after_step(novel_id, 3, {"chapter_num": chapter_num})
+        memory_mgr.update_after_step(novel_id, 3, {"chapter_num": chapter_num, "chapter_content": final_text})
 
         queue.put(_sse_event("step_complete", {
             "step": 3,
@@ -563,8 +563,8 @@ async def stream_step3_chapter(
         yield _sse_event("done", {"content": "流结束"})
         return
 
-    # Load memory context and prepend to prompt
-    memory_mgr = MemoryManager(user_id)
+    # Load memory context (includes chapter summaries for continuity)
+    memory_mgr = MemoryManager(user_id, novel_id)
     memory_context = memory_mgr.format_context()
     prompt = _build_step3_prompt(req, novel)
     if memory_context:
@@ -599,8 +599,8 @@ def _run_chat_in_thread(
     """Run a conversational brainstorming agent."""
     try:
         # Load memory context
-        memory_mgr = MemoryManager(user_id)
-        memory_context = memory_mgr.format_context()
+        memory_mgr = MemoryManager(user_id, novel_id) if novel_id else None
+        memory_context = memory_mgr.format_context() if memory_mgr else ""
 
         cb, flush, get_text = _make_streaming_callback_with_accumulator("chat", queue)
         agent = Agent(

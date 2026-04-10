@@ -3,6 +3,7 @@ import type { NovelSummary, NovelStatus, PageView } from "../types";
 interface Props {
   novels: NovelSummary[];
   onSelect: (novelId: string, page: PageView) => void;
+  onDelete?: (novelId: string) => void;
   loading: boolean;
 }
 
@@ -27,7 +28,7 @@ function formatDate(ts?: number): string {
   return d.toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
-export default function NovelList({ novels, onSelect, loading }: Props) {
+export default function NovelList({ novels, onSelect, onDelete, loading }: Props) {
   if (loading) {
     return <p style={{ color: "#666", fontSize: 14 }}>加载中...</p>;
   }
@@ -56,15 +57,31 @@ export default function NovelList({ novels, onSelect, loading }: Props) {
           >
             <div style={styles.cardTop}>
               <h4 style={styles.title}>{title}</h4>
-              <span
-                style={{
-                  ...styles.badge,
-                  color: statusInfo.color,
-                  borderColor: statusInfo.color,
-                }}
-              >
-                {statusInfo.label}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    ...styles.badge,
+                    color: statusInfo.color,
+                    borderColor: statusInfo.color,
+                  }}
+                >
+                  {statusInfo.label}
+                </span>
+                {onDelete && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm("确定删除这部作品吗？此操作不可恢复。")) {
+                        onDelete(novel.novel_id);
+                      }
+                    }}
+                    style={styles.deleteBtn}
+                    title="删除"
+                  >
+                    🗑
+                  </button>
+                )}
+              </div>
             </div>
             {novel.premise && (
               <p style={styles.premise}>
@@ -119,6 +136,15 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid",
     whiteSpace: "nowrap",
     flexShrink: 0,
+  },
+  deleteBtn: {
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    fontSize: 14,
+    padding: "2px 4px",
+    opacity: 0.5,
+    lineHeight: 1,
   },
   premise: {
     color: "#888",

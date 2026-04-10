@@ -5,9 +5,10 @@ import type { UserMemory } from "../types";
 interface Props {
   open: boolean;
   onClose: () => void;
+  novelId?: string;
 }
 
-export default function MemoryPanel({ open, onClose }: Props) {
+export default function MemoryPanel({ open, onClose, novelId }: Props) {
   const { email, idToken } = useAuth();
   const [memory, setMemory] = useState<UserMemory | null>(null);
   const [loading, setLoading] = useState(false);
@@ -16,11 +17,11 @@ export default function MemoryPanel({ open, onClose }: Props) {
   const userId = email || "anonymous";
 
   useEffect(() => {
-    if (open) {
+    if (open && novelId) {
       setLoading(true);
       const h: Record<string, string> = { "Content-Type": "application/json" };
       if (idToken) h["Authorization"] = `Bearer ${idToken}`;
-      fetch(`/api/memory?user_id=${encodeURIComponent(userId)}`, { headers: h })
+      fetch(`/api/memory?user_id=${encodeURIComponent(userId)}&novel_id=${encodeURIComponent(novelId)}`, { headers: h })
         .then((r) => r.json())
         .then((data: UserMemory) => {
           setMemory(data);
@@ -28,8 +29,11 @@ export default function MemoryPanel({ open, onClose }: Props) {
         })
         .catch((err) => console.error("Failed to load memory:", err))
         .finally(() => setLoading(false));
+    } else if (open && !novelId) {
+      setMemory(null);
+      setLoading(false);
     }
-  }, [open, userId, idToken]);
+  }, [open, userId, idToken, novelId]);
 
   const handleSaveNotes = async () => {
     if (!memory) return;
@@ -44,7 +48,7 @@ export default function MemoryPanel({ open, onClose }: Props) {
           notes,
         },
       };
-      const res = await fetch("/api/memory", {
+      const res = await fetch(`/api/memory?novel_id=${encodeURIComponent(novelId || "")}`, {
         method: "PUT",
         headers: h,
         body: JSON.stringify({ user_id: userId, memory: updated }),

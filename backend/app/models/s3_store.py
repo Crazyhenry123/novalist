@@ -30,6 +30,12 @@ class S3Store:
         except Exception:
             return {}
 
+    def delete(self, key: str):
+        try:
+            self.s3.delete_object(Bucket=self.bucket, Key=key)
+        except Exception:
+            pass
+
     def list_keys(self, prefix: str) -> list[str]:
         try:
             resp = self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)

@@ -80,7 +80,7 @@ class NovelRequest(BaseModel):
     structure: NarrativeStructure = NarrativeStructure.THREE_ACT
     style: WritingStyle = WritingStyle.COMMERCIAL
     pov: POV = POV.THIRD_LIMITED
-    target_chapters: int = Field(default=12, ge=3, le=50)
+    target_chapters: int = Field(default=12, ge=3, le=200)
     characters: list[CharacterBrief] = Field(default_factory=list)
     setting_notes: str = ""
     theme_notes: str = ""
@@ -159,7 +159,7 @@ class Step1Request(BaseModel):
     structure: NarrativeStructure = NarrativeStructure.THREE_ACT
     style: WritingStyle = WritingStyle.COMMERCIAL
     pov: POV = POV.THIRD_LIMITED
-    target_chapters: int = Field(default=12, ge=3, le=50)
+    target_chapters: int = Field(default=12, ge=3, le=200)
     characters: list[CharacterBrief] = Field(default_factory=list)
     setting_notes: str = ""
     theme_notes: str = ""

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import ChatPanel from "../components/ChatPanel";
 import { useSSE } from "../hooks/useSSE";
 import { useAuth } from "../auth/CognitoProvider";
+import { useToast } from "../components/Toast";
 
 interface Props {
   novelId: string;
@@ -16,6 +17,7 @@ interface ChatMessage {
 
 export default function FreeChatPage({ novelId, onBack, onStartComposition }: Props) {
   const { idToken, email } = useAuth();
+  const { toast } = useToast();
   const userId = email || "anonymous";
   const { messages: sseMessages, generating, generate, clearMessages } = useSSE();
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -109,10 +111,10 @@ export default function FreeChatPage({ novelId, onBack, onStartComposition }: Pr
         if (data.novel_id) {
           setCurrentNovelId(data.novel_id);
         }
-        alert("已保存为项目");
+        toast("已保存为项目", "success");
       }
     } catch {
-      alert("保存失败，请重试");
+      toast("保存失败，请重试", "error");
     }
   }, [chatHistory, currentNovelId, userId, idToken]);
 
@@ -139,7 +141,7 @@ export default function FreeChatPage({ novelId, onBack, onStartComposition }: Pr
           }
         })
         .catch(() => {
-          alert("保存失败，请重试");
+          toast("保存失败，请重试", "error");
         });
     }
   }, [currentNovelId, chatHistory, userId, idToken, onStartComposition]);

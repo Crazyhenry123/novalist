@@ -167,7 +167,7 @@ export default function StorySetup({ onSubmit, disabled }: Props) {
           <input
             type="number"
             min={3}
-            max={50}
+            max={200}
             value={chapters}
             onChange={(e) => setChapters(Number(e.target.value))}
             style={styles.input}

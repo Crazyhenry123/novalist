@@ -7,6 +7,7 @@ import RefineChat from "../components/RefineChat";
 import { useSSE } from "../hooks/useSSE";
 import { useNovel } from "../hooks/useNovel";
 import { useAuth } from "../auth/CognitoProvider";
+import { useToast } from "../components/Toast";
 import type { NovelRequest } from "../types";
 
 interface Props {
@@ -14,8 +15,21 @@ interface Props {
   onBack: () => void;
 }
 
+function downloadText(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/markdown; charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function StepComposer({ novelId, onBack }: Props) {
   const { idToken } = useAuth();
+  const { toast } = useToast();
   const { loadNovel, saveStep1, saveStep2, refreshNovel, userId } = useNovel();
   const { messages, generating, generate, cancel, clearMessages } = useSSE();
 
@@ -49,6 +63,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
   >([]);
   const [generatingChapter, setGeneratingChapter] = useState<number | null>(null);
   const [chapterPhase, setChapterPhase] = useState<"writing" | "editing">("writing");
+  const [novelCompleted, setNovelCompleted] = useState(false);
 
   const lastProcessedRef = useRef(0);
 
@@ -74,6 +89,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
             setStep(2);
           } else if (novel.status === "step2_done" || novel.status === "writing" || novel.status === "completed") {
             setStep(3);
+            if (novel.status === "completed") setNovelCompleted(true);
             if (novel.plot) {
               const abstracts = parsePlotToAbstracts(novel.plot);
               if (abstracts.length > 0) {
@@ -308,7 +324,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
       clearMessages();
       lastProcessedRef.current = 0;
     } catch (err) {
-      alert("保存失败，请重试");
+      toast("保存失败，请重试", "error");
     }
   }, [currentNovelId, structureText, charactersText, worldText, saveStep1, clearMessages]);
 
@@ -358,7 +374,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
       clearMessages();
       lastProcessedRef.current = 0;
     } catch (err) {
-      alert("保存失败，请重试");
+      toast("保存失败，请重试", "error");
     }
   }, [currentNovelId, plotText, parsedAbstracts, saveStep2, refreshNovel, clearMessages]);
 
@@ -392,6 +408,45 @@ export default function StepComposer({ novelId, onBack }: Props) {
     );
   }, []);
 
+  const handleExportAll = useCallback(async () => {
+    try {
+      const h: Record<string, string> = {};
+      if (idToken) h["Authorization"] = `Bearer ${idToken}`;
+      const res = await fetch(
+        `/api/novel/${currentNovelId}/export?user_id=${encodeURIComponent(userId)}`,
+        { headers: h }
+      );
+      if (!res.ok) throw new Error("导出失败");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `小说-${currentNovelId}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast("导出失败，请重试", "error");
+    }
+  }, [currentNovelId, userId, idToken]);
+
+  const handleMarkComplete = useCallback(async () => {
+    try {
+      const h: Record<string, string> = { "Content-Type": "application/json" };
+      if (idToken) h["Authorization"] = `Bearer ${idToken}`;
+      const res = await fetch(
+        `/api/novel/${currentNovelId}/complete?user_id=${encodeURIComponent(userId)}`,
+        { method: "POST", headers: h }
+      );
+      if (res.ok) {
+        setNovelCompleted(true);
+      }
+    } catch {
+      // silently fail
+    }
+  }, [currentNovelId, userId, idToken]);
+
   const step1Tabs = useMemo(() => [
     { key: "structure", label: "📐 故事结构" },
     { key: "characters", label: "👤 角色设定" },
@@ -417,7 +472,7 @@ export default function StepComposer({ novelId, onBack }: Props) {
         )}
       </div>
 
-      <StepProgress currentStep={step} />
+      <StepProgress currentStep={step} completed={novelCompleted} />
 
       {/* ── STEP 1 ── */}
       {step === 1 && (
@@ -451,9 +506,20 @@ export default function StepComposer({ novelId, onBack }: Props) {
                       setStructureText(text);
                     }}
                   />
-                  <button onClick={handleStep1Confirm} style={styles.confirmBtn}>
-                    确认，进入下一步 →
-                  </button>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <button onClick={handleStep1Confirm} style={styles.confirmBtn}>
+                      确认，进入下一步 →
+                    </button>
+                    <button
+                      onClick={() => {
+                        const content = `# 故事结构\n\n${structureText}\n\n# 角色设定\n\n${charactersText}\n\n# 世界观\n\n${worldText}`;
+                        downloadText(`设定-${currentNovelId}.md`, content);
+                      }}
+                      style={styles.downloadBtn}
+                    >
+                      📥 下载架构
+                    </button>
+                  </div>
                 </>
               )}
             </div>
@@ -579,9 +645,17 @@ export default function StepComposer({ novelId, onBack }: Props) {
                       if (abstracts.length > 0) setParsedAbstracts(abstracts);
                     }}
                   />
-                  <button onClick={handleStep2Confirm} style={styles.confirmBtn}>
-                    确认大纲 →
-                  </button>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <button onClick={handleStep2Confirm} style={styles.confirmBtn}>
+                      确认大纲 →
+                    </button>
+                    <button
+                      onClick={() => downloadText(`大纲-${currentNovelId}.md`, plotText)}
+                      style={styles.downloadBtn}
+                    >
+                      📥 下载大纲
+                    </button>
+                  </div>
                 </>
               )}
             </div>
@@ -595,12 +669,56 @@ export default function StepComposer({ novelId, onBack }: Props) {
           <div style={styles.genRow}>
             <button onClick={() => setStep(2)} style={styles.backStepBtn}>← 返回上一步</button>
           </div>
+          {/* Completion banner */}
+          {novelCompleted && (
+            <div style={styles.completionBanner}>
+              <span style={styles.completionText}>🎉 小说已完成</span>
+              <button onClick={handleExportAll} style={styles.exportBtn}>📥 导出全文 (docx)</button>
+            </div>
+          )}
+
+          {/* Action bar when chapters exist but not yet completed */}
+          {!novelCompleted && chapters.some((ch) => ch.status === "done") && (
+            <div style={styles.actionBar}>
+              <span style={styles.progressText}>
+                已完成 {chapters.filter(c => c.status === "done").length} / {chapters.length} 章
+              </span>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={handleExportAll} style={styles.downloadBtn}>📥 导出 (docx)</button>
+                {chapters.every((ch) => ch.status === "done") && (
+                  <button onClick={handleMarkComplete} style={styles.completeBtn}>完成创作</button>
+                )}
+              </div>
+            </div>
+          )}
           <ChapterList
             chapters={chapters}
             onGenerate={handleChapterGenerate}
             onOutlineChange={handleOutlineChange}
             generatingChapter={generatingChapter}
             generatingPhase={chapterPhase}
+            onDownloadChapter={async (num) => {
+              try {
+                const h: Record<string, string> = {};
+                if (idToken) h["Authorization"] = `Bearer ${idToken}`;
+                const res = await fetch(
+                  `/api/novel/${currentNovelId}/chapter/${num}/export?user_id=${encodeURIComponent(userId)}`,
+                  { headers: h }
+                );
+                if (!res.ok) throw new Error("导出失败");
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `第${num}章.docx`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              } catch {
+                toast("导出失败", "error");
+              }
+            }}
           />
         </div>
       )}
@@ -663,6 +781,13 @@ const styles: Record<string, React.CSSProperties> = {
   backStepBtn: { padding: "8px 16px", borderRadius: 6, border: "1px solid #333", background: "transparent", color: "#aaa", cursor: "pointer", fontSize: 13, fontFamily: "inherit" },
   generateBtn: { padding: "12px 28px", borderRadius: 8, border: "none", background: "#7c3aed", color: "white", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" },
   confirmBtn: { padding: "12px 28px", borderRadius: 8, border: "none", background: "#10b981", color: "white", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", alignSelf: "flex-start" },
+  downloadBtn: { padding: "8px 16px", borderRadius: 6, border: "1px solid #333", background: "transparent", color: "#aaa", cursor: "pointer", fontSize: 13, fontFamily: "inherit" },
+  completionBanner: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 10 },
+  completionText: { color: "#10b981", fontSize: 16, fontWeight: 600 },
+  exportBtn: { padding: "8px 20px", borderRadius: 6, border: "1px solid rgba(16,185,129,0.4)", background: "transparent", color: "#10b981", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" },
+  actionBar: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "#111", border: "1px solid #222", borderRadius: 10 },
+  progressText: { color: "#888", fontSize: 13 },
+  completeBtn: { padding: "8px 20px", borderRadius: 6, border: "1px solid rgba(16,185,129,0.4)", background: "rgba(16,185,129,0.1)", color: "#10b981", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" },
   plotTextarea: { width: "100%", minHeight: 300, maxHeight: 500, overflow: "auto", padding: 16, background: "#111", border: "1px solid #222", borderRadius: 10, color: "#e8e8e8", fontSize: 14, lineHeight: 1.8, fontFamily: "'Georgia', serif", resize: "vertical", outline: "none" },
   summaryBlock: { background: "#0d0d0d", border: "1px solid #1a1a1a", borderRadius: 10, padding: 16, marginBottom: 8 },
   summaryTitle: { color: "#888", fontSize: 13, fontWeight: 600, marginBottom: 8 },

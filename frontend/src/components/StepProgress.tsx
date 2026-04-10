@@ -1,5 +1,6 @@
 interface Props {
   currentStep: number;
+  completed?: boolean;
 }
 
 const STEPS = [
@@ -8,33 +9,25 @@ const STEPS = [
   { num: 3, label: "章节写作" },
 ];
 
-export default function StepProgress({ currentStep }: Props) {
+export default function StepProgress({ currentStep, completed }: Props) {
   return (
     <div style={styles.container}>
       {STEPS.map((step, i) => {
-        const isActive = step.num === currentStep;
-        const isCompleted = step.num < currentStep;
+        const allDone = completed;
+        const isActive = !allDone && step.num === currentStep;
+        const isCompleted = allDone || step.num < currentStep;
         const color = isCompleted ? "#10b981" : isActive ? "#7c3aed" : "#555";
-        const bgColor = isCompleted ? "rgba(16,185,129,0.15)" : isActive ? "rgba(124,58,237,0.15)" : "transparent";
+        const bgColor = isCompleted ? "rgba(16,185,129,0.1)" : isActive ? "rgba(124,58,237,0.15)" : "transparent";
 
         return (
           <div key={step.num} style={styles.stepRow}>
             {i > 0 && (
-              <div
-                style={{
-                  ...styles.line,
-                  background: isCompleted ? "#10b981" : "#333",
-                }}
-              />
+              <div style={{ ...styles.line, background: isCompleted ? "#10b981" : "#333" }} />
             )}
-            <div
-              style={{
-                ...styles.step,
-                borderColor: color,
-                background: bgColor,
-              }}
-            >
-              <span style={{ ...styles.num, color }}>{step.num}</span>
+            <div style={{ ...styles.step, borderColor: color, background: bgColor }}>
+              <span style={{ ...styles.num, color }}>
+                {isCompleted ? "✓" : step.num}
+              </span>
               <span style={{ ...styles.label, color: isActive ? "#e8e8e8" : isCompleted ? "#10b981" : "#666" }}>
                 {step.label}
               </span>
@@ -42,6 +35,9 @@ export default function StepProgress({ currentStep }: Props) {
           </div>
         );
       })}
+      {completed && (
+        <div style={styles.completedBadge}>已完成</div>
+      )}
     </div>
   );
 }
@@ -78,5 +74,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   label: {
     fontSize: 14,
+  },
+  completedBadge: {
+    marginLeft: 16,
+    padding: "6px 16px",
+    borderRadius: 20,
+    background: "rgba(16,185,129,0.15)",
+    color: "#10b981",
+    fontSize: 13,
+    fontWeight: 600,
+    border: "1px solid rgba(16,185,129,0.3)",
   },
 };

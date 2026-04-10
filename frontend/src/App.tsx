@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AuthProvider } from "./auth/CognitoProvider";
 import ProtectedRoute from "./auth/ProtectedRoute";
+import { ToastProvider } from "./components/Toast";
 import Layout from "./components/Layout";
 import HomePage from "./pages/HomePage";
 import StepComposer from "./pages/StepComposer";
@@ -12,7 +13,7 @@ function AppRouter() {
   const [novelId, setNovelId] = useState<string>("");
 
   return (
-    <Layout>
+    <Layout novelId={novelId}>
       {page === "home" && (
         <HomePage
           onNavigate={setPage}
@@ -42,9 +43,11 @@ function AppRouter() {
 export default function App() {
   return (
     <AuthProvider>
-      <ProtectedRoute>
-        <AppRouter />
-      </ProtectedRoute>
+      <ToastProvider>
+        <ProtectedRoute>
+          <AppRouter />
+        </ProtectedRoute>
+      </ToastProvider>
     </AuthProvider>
   );
 }

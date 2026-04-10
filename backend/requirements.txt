@@ -7,6 +7,7 @@ boto3>=1.35.0
 pydantic>=2.0.0
 python-jose[cryptography]>=3.3.0
 httpx>=0.27.0
+python-docx>=1.0.0
 # SSE streaming redesign Wed  8 Apr 2026 23:32:41 CST
 # flush fix 1775702863
 # test-sse 1775703612

@@ -15,9 +15,10 @@ interface Props {
   onOutlineChange?: (chapterNum: number, outline: string) => void;
   generatingChapter: number | null;
   generatingPhase?: "writing" | "editing";
+  onDownloadChapter?: (num: number) => void;
 }
 
-export default function ChapterList({ chapters, onGenerate, onOutlineChange, generatingChapter, generatingPhase }: Props) {
+export default function ChapterList({ chapters, onGenerate, onOutlineChange, generatingChapter, generatingPhase, onDownloadChapter }: Props) {
   const [expandedChapter, setExpandedChapter] = useState<number | null>(null);
   const [confirmedOutlines, setConfirmedOutlines] = useState<Record<number, boolean>>({});
 
@@ -73,6 +74,15 @@ export default function ChapterList({ chapters, onGenerate, onOutlineChange, gen
                 </span>
               </div>
               <div style={styles.chapterActions}>
+                {ch.status === "done" && ch.content && onDownloadChapter && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDownloadChapter(ch.num); }}
+                    style={styles.downloadIconBtn}
+                    title="下载本章"
+                  >
+                    📥
+                  </button>
+                )}
                 <span
                   style={{
                     ...styles.statusBadge,
@@ -232,6 +242,14 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 20,
     border: "1px solid",
     whiteSpace: "nowrap",
+  },
+  downloadIconBtn: {
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    fontSize: 14,
+    padding: "2px 6px",
+    lineHeight: 1,
   },
   expandIcon: {
     color: "#555",
